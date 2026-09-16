@@ -1,0 +1,9 @@
+V65 static integrity audit
+JavaScript syntax: PASS (node --check)
+DOM id references: PASS (94 referenced IDs, 0 missing)
+Duplicate real IDs: PASS (0)
+HTML buttons found: 35
+Handler expressions found: 57
+Key navigation/update controls present: enterMap, enterUPS, homeAbout, analysisBackMap, aboutBackMap, backMapBtn, upsCancelV47, upsSaveV47, upsLocateMainV48
+Content screens explicit vertical scroll: About, Inventori, Analisis, UPS
+Map viewport remains fixed; map itself is not converted into page scroll.
