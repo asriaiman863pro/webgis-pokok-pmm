@@ -1,0 +1,1 @@
+V89: Petak analysis restored to show all Petak A-P at all times. Selected/search petak is shown in synced summary and highlighted in table. Map petak search/filter, tree info, tree images, and UAV overlay retained from V88.

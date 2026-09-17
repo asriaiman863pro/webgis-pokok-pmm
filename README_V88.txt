@@ -1,0 +1,1 @@
+V88: petak analysis sync with map/search, petak metrics in tree popup, embedded/resized tree photos, embedded/resized UAV overlay.
