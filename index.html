@@ -2362,7 +2362,7 @@ initSupabaseDataV77();
     return false;
   }
   function findPetakByPointV90(lat,lng){
-    const list=Array.isArray(petakDataV84)?petakDataV84:[];
+    const list=Array.isArray(window.petakDataV84)?window.petakDataV84:[];
     for(const f of list){
       if(pointInGeometryV90(lng,lat,f.geometry)) return f;
     }
@@ -2411,25 +2411,49 @@ initSupabaseDataV77();
     addTreeTempMarkerV90=L.circleMarker([lat,lng],{radius:9,weight:3,color:'#ffffff',fillColor:'#0b8f5b',fillOpacity:.95,pane:'treePointsPane'}).addTo(map);
     showAddTreeInfoV90(lat,lng,petakFeature);
   }
-  function startAddTreeModeV90(){
-    if(window.requireUPSAccessV79){
-      window.requireUPSAccessV79(()=>startAddTreeModeV90());
-      return;
+  // The button is already inside the password-protected UPS portal,
+  // so do not request the password a second time here.
+  function startAddTreeModeV91(){
+    try{
+      if(addTreeModeV90) return;
+      addTreeModeV90=true;
+      const ups=document.getElementById('upsScreenV46');
+      if(ups) ups.style.display='none';
+      if(typeof showMap==='function') showMap();
+      const hint=document.getElementById('addTreeHintV90');
+      const info=document.getElementById('addTreeInfoV90');
+      if(hint) hint.style.display='block';
+      if(info) info.style.display='none';
+      if(typeof map!=='undefined' && map){
+        const container=map.getContainer();
+        if(container) container.classList.add('add-tree-active-v90');
+        map.off('click',onAddTreeMapClickV90);
+        map.on('click',onAddTreeMapClickV90);
+        setTimeout(()=>{try{map.invalidateSize();}catch(e){}},100);
+      }
+    }catch(err){
+      console.error('Tambah Pokok Stage 1:',err);
+      addTreeModeV90=false;
+      alert('Fungsi Tambah Pokok tidak dapat diaktifkan. Sila semak Console.');
     }
-    if(addTreeModeV90) return;
-    addTreeModeV90=true;
-    document.getElementById('upsScreenV46').style.display='none';
-    showMap();
-    const hint=document.getElementById('addTreeHintV90');
-    const info=document.getElementById('addTreeInfoV90');
-    if(hint)hint.style.display='block';
-    if(info)info.style.display='none';
-    map.getContainer()?.classList.add('add-tree-active-v90');
-    map.off('click',onAddTreeMapClickV90);
-    map.on('click',onAddTreeMapClickV90);
   }
-  document.getElementById('upsAddTreeBtnV90')?.addEventListener('click',startAddTreeModeV90);
-  document.getElementById('addTreeCancelV90')?.addEventListener('click',()=>clearAddTreeV90(true));
+  window.startAddTreeModeV91=startAddTreeModeV91;
+  const addBtn=document.getElementById('upsAddTreeBtnV90');
+  if(addBtn){
+    addBtn.type='button';
+    addBtn.onclick=(ev)=>{
+      ev.preventDefault();
+      ev.stopPropagation();
+      startAddTreeModeV91();
+    };
+  }
+  const cancelBtn=document.getElementById('addTreeCancelV90');
+  if(cancelBtn){
+    cancelBtn.onclick=(ev)=>{
+      ev.preventDefault();
+      clearAddTreeV90(true);
+    };
+  }
 })();
 </script>
 
