@@ -299,6 +299,22 @@ body{overflow:hidden}
 <style id="petak-layer-v83">
   .petak-boundary-v83{cursor:pointer;}
 </style>
+
+<style id="tambah-pokok-v90-style">
+  #upsAddTreeBtnV90{white-space:nowrap}
+  #addTreeHintV90{position:fixed;left:50%;top:82px;transform:translateX(-50%);z-index:5000;display:none;max-width:min(92vw,620px);background:#ffffff;border:1px solid #d9e3de;border-radius:14px;padding:12px 16px;box-shadow:0 12px 30px rgba(0,0,0,.16);font:700 13px/1.4 Arial,sans-serif;color:#1e5144;text-align:center}
+  #addTreeHintV90 small{display:block;margin-top:4px;font-weight:500;color:#66756f}
+  #addTreeInfoV90{position:fixed;right:22px;bottom:22px;z-index:5001;display:none;width:min(92vw,360px);background:#fff;border:1px solid #d9e3de;border-radius:16px;padding:16px;box-shadow:0 18px 42px rgba(0,0,0,.18);font:13px/1.45 Arial,sans-serif;color:#22332d}
+  #addTreeInfoV90 h3{margin:0 0 10px;color:#1e5144;font-size:17px}
+  #addTreeInfoV90 .add-tree-grid-v90{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0 12px}
+  #addTreeInfoV90 .add-tree-cell-v90{background:#f5f9f7;border:1px solid #e1ebe6;border-radius:10px;padding:9px}
+  #addTreeInfoV90 .add-tree-cell-v90 span{display:block;font-size:10px;color:#72827b;margin-bottom:3px}
+  #addTreeInfoV90 .add-tree-cell-v90 b{font-size:12px;color:#18382f}
+  #addTreeInfoV90 .add-tree-actions-v90{display:flex;gap:8px;justify-content:flex-end;margin-top:10px}
+  #addTreeInfoV90 .add-tree-note-v90{font-size:11px;color:#72827b}
+  .add-tree-active-v90{cursor:crosshair!important}
+</style>
+
 </head>
 <body>
 <header class="header">
@@ -515,6 +531,7 @@ body{overflow:hidden}
         <input id="upsSearchInputV47" type="text" placeholder="Contoh: A_0001 atau 11">
         <button id="upsSearchBtnV47" class="home-btn primary">Cari</button>
         <button id="upsClearBtnV47" class="home-btn secondary">Reset</button>
+        <button id="upsAddTreeBtnV90" class="home-btn primary" type="button">+ Tambah Pokok</button>
       </div>
       <div id="upsSearchResultsV47" class="ups-results-v47"></div>
       <div id="upsUpdateSummaryV48" class="ups-update-summary-v48"></div>
@@ -2288,4 +2305,132 @@ initSupabaseDataV77();
   };
 })();
 </script>
+
+
+<div id="addTreeHintV90">
+  MOD TAMBAH POKOK AKTIF — Klik lokasi pokok baharu pada peta utama.
+  <small>Lokasi ini belum disimpan ke Supabase. Fasa ini hanya menguji koordinat, petak dan keluasan automatik.</small>
+</div>
+<div id="addTreeInfoV90">
+  <h3>Lokasi Pokok Baharu</h3>
+  <div id="addTreeInfoContentV90"></div>
+  <div class="add-tree-note-v90">Semua maklumat spatial di bawah dijana oleh sistem daripada lokasi klik dan sempadan Petak A–P.</div>
+  <div class="add-tree-actions-v90">
+    <button id="addTreeCancelV90" class="home-btn secondary" type="button">Batal</button>
+  </div>
+</div>
+
+
+<script id="tambah-pokok-v90-stage1">
+(function(){
+  let addTreeModeV90=false;
+  let addTreeTempMarkerV90=null;
+
+  function fmtCoordV90(v){
+    return Number(v).toFixed(7);
+  }
+  function fmtAreaV90(v){
+    const n=Number(v);
+    return Number.isFinite(n)?n.toLocaleString('en-MY',{maximumFractionDigits:2})+' m²':'-';
+  }
+  function pointOnSegmentV90(px,py,ax,ay,bx,by){
+    const cross=(py-ay)*(bx-ax)-(px-ax)*(by-ay);
+    if(Math.abs(cross)>1e-10) return false;
+    return px>=Math.min(ax,bx)-1e-10 && px<=Math.max(ax,bx)+1e-10 && py>=Math.min(ay,by)-1e-10 && py<=Math.max(ay,by)+1e-10;
+  }
+  function pointInRingV90(lng,lat,ring){
+    let inside=false;
+    for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+      const ax=Number(ring[j][0]), ay=Number(ring[j][1]);
+      const bx=Number(ring[i][0]), by=Number(ring[i][1]);
+      if(pointOnSegmentV90(lng,lat,ax,ay,bx,by)) return true;
+      const intersect=((ay>lat)!==(by>lat)) && (lng < (bx-ax)*(lat-ay)/(by-ay)+ax);
+      if(intersect) inside=!inside;
+    }
+    return inside;
+  }
+  function pointInPolygonCoordsV90(lng,lat,poly){
+    if(!Array.isArray(poly)||!poly.length) return false;
+    if(!pointInRingV90(lng,lat,poly[0])) return false;
+    for(let i=1;i<poly.length;i++) if(pointInRingV90(lng,lat,poly[i])) return false;
+    return true;
+  }
+  function pointInGeometryV90(lng,lat,geom){
+    if(!geom) return false;
+    if(geom.type==='Polygon') return pointInPolygonCoordsV90(lng,lat,geom.coordinates);
+    if(geom.type==='MultiPolygon') return geom.coordinates.some(poly=>pointInPolygonCoordsV90(lng,lat,poly));
+    return false;
+  }
+  function findPetakByPointV90(lat,lng){
+    const list=Array.isArray(petakDataV84)?petakDataV84:[];
+    for(const f of list){
+      if(pointInGeometryV90(lng,lat,f.geometry)) return f;
+    }
+    return null;
+  }
+  function clearAddTreeV90(returnToUPS=true){
+    addTreeModeV90=false;
+    if(typeof map!=='undefined'){
+      map.off('click',onAddTreeMapClickV90);
+      map.getContainer()?.classList.remove('add-tree-active-v90');
+    }
+    if(addTreeTempMarkerV90){
+      try{ map.removeLayer(addTreeTempMarkerV90); }catch(e){}
+      addTreeTempMarkerV90=null;
+    }
+    const hint=document.getElementById('addTreeHintV90');
+    const info=document.getElementById('addTreeInfoV90');
+    if(hint)hint.style.display='none';
+    if(info)info.style.display='none';
+    if(returnToUPS)showUPS();
+  }
+  function showAddTreeInfoV90(lat,lng,petakFeature){
+    const box=document.getElementById('addTreeInfoV90');
+    const content=document.getElementById('addTreeInfoContentV90');
+    if(!box||!content) return;
+    if(!petakFeature){
+      content.innerHTML='<div style="background:#fff4f2;border:1px solid #f4c8c1;border-radius:10px;padding:10px;color:#9a2f20"><b>Lokasi tidak berada dalam Petak A–P.</b><div style="margin-top:4px">Sila klik semula di dalam salah satu sempadan petak.</div></div>';
+      box.style.display='block';
+      return;
+    }
+    const p=petakFeature.properties||{};
+    content.innerHTML=`
+      <div class="add-tree-grid-v90">
+        <div class="add-tree-cell-v90"><span>Latitude</span><b>${fmtCoordV90(lat)}</b></div>
+        <div class="add-tree-cell-v90"><span>Longitude</span><b>${fmtCoordV90(lng)}</b></div>
+        <div class="add-tree-cell-v90"><span>Petak</span><b>${esc(p.PETAK??'-')}</b></div>
+        <div class="add-tree-cell-v90"><span>Luas Petak</span><b>${fmtAreaV90(p.Luas_m2)}</b></div>
+      </div>`;
+    box.style.display='block';
+  }
+  function onAddTreeMapClickV90(e){
+    if(!addTreeModeV90) return;
+    const lat=e.latlng.lat,lng=e.latlng.lng;
+    const petakFeature=findPetakByPointV90(lat,lng);
+    if(addTreeTempMarkerV90){try{map.removeLayer(addTreeTempMarkerV90);}catch(err){}}
+    addTreeTempMarkerV90=L.circleMarker([lat,lng],{radius:9,weight:3,color:'#ffffff',fillColor:'#0b8f5b',fillOpacity:.95,pane:'treePointsPane'}).addTo(map);
+    showAddTreeInfoV90(lat,lng,petakFeature);
+  }
+  function startAddTreeModeV90(){
+    if(window.requireUPSAccessV79){
+      window.requireUPSAccessV79(()=>startAddTreeModeV90());
+      return;
+    }
+    if(addTreeModeV90) return;
+    addTreeModeV90=true;
+    document.getElementById('upsScreenV46').style.display='none';
+    showMap();
+    const hint=document.getElementById('addTreeHintV90');
+    const info=document.getElementById('addTreeInfoV90');
+    if(hint)hint.style.display='block';
+    if(info)info.style.display='none';
+    map.getContainer()?.classList.add('add-tree-active-v90');
+    map.off('click',onAddTreeMapClickV90);
+    map.on('click',onAddTreeMapClickV90);
+  }
+  document.getElementById('upsAddTreeBtnV90')?.addEventListener('click',startAddTreeModeV90);
+  document.getElementById('addTreeCancelV90')?.addEventListener('click',()=>clearAddTreeV90(true));
+})();
+</script>
+
 </body></html>
