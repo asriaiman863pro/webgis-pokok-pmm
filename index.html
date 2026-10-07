@@ -915,6 +915,16 @@ async function initSupabaseDataV77(){
     const remote=await loadSupabasePokokV77();
     all=remote;
     SUPABASE_CONNECTED_V77=true;
+    // Purge local add-history records that no longer exist in Supabase.
+    try{
+      const hist=loadUPSAddHistoryV91();
+      const cleaned=hist.filter(x=>{
+        const f=all.find(row=>String(row.properties?.UID??'')===String(x.uid??''));
+        const p=f?.properties||{};
+        return !!f && (p.REKOD_BARU===true || String(p.REKOD_BARU).toLowerCase()==='true');
+      });
+      if(cleaned.length!==hist.length) saveUPSAddHistoryV91(cleaned);
+    }catch(e){}
     populateAdvancedFilters();
     populateInventory();
     render();
@@ -1558,10 +1568,11 @@ function isUPSAddedTreeV92(uid){
   const target=String(uid??'').trim();
   const f=all.find(x=>String(x.properties?.UID??'')===target);
   const p=f?.properties||{};
-  /* Primary source: database flag. Local history is retained as a fallback
-     for records added before REKOD_BARU was introduced. */
-  if(p.REKOD_BARU===true || String(p.REKOD_BARU).toLowerCase()==='true') return true;
-  return loadUPSAddHistoryV91().some(x=>String(x.uid??'')===target);
+  // Only a currently loaded database row explicitly marked REKOD_BARU
+  // can be deleted. This prevents stale localStorage history from making
+  // old/already-deleted points appear deletable.
+  if(!f) return false;
+  return p.REKOD_BARU===true || String(p.REKOD_BARU).toLowerCase()==='true';
 }
 function removeUPSAddedHistoryV92(uid){
   const target=String(uid??'');
@@ -1610,6 +1621,13 @@ async function deleteUPSAddedTreeV92(uid){
     const msg=String(err?.message||err);
     if(msg.toLowerCase().includes('permission denied')||msg.toLowerCase().includes('row-level security')){
       alert('Gagal padam: Supabase belum membenarkan DELETE untuk rekod pokok baharu.');
+    }else if(msg.toLowerCase().includes('rekod tidak ditemui')){
+      // The record is already gone from Supabase; remove stale local history
+      // and refresh the live dataset so the point cannot linger in the UI.
+      removeUPSAddedHistoryV92(target);
+      if(typeof initSupabaseDataV77==='function') await initSupabaseDataV77();
+      if(typeof renderUPSHistoryV57==='function') renderUPSHistoryV57();
+      alert(`Rekod ${target} memang sudah tiada dalam Supabase. Paparan lama telah dibersihkan.`);
     }else{
       alert('Gagal padam: '+msg);
     }
@@ -1809,7 +1827,10 @@ function renderUPSHistoryV57(){
 
   const updateItems=[...new Set([...Object.keys(saved47),...Object.keys(latest),...Object.keys(meta50)])].map(uid=>{
     const f=all.find(x=>String(x.properties.UID)===String(uid));
-    const p=f?.properties||{};
+    // If the tree no longer exists in the live database, its stale local
+    // activity card should not be rendered.
+    if(!f) return null;
+    const p=f.properties||{};
     const meta=latest[uid]||meta50[uid]||{};
     let changes=meta.after||meta.changes||saved47[uid]||{};
     let before=meta.before||{};
@@ -1829,9 +1850,28 @@ function renderUPSHistoryV57(){
     });
     const at=meta.updatedAt||'';
     return {type:'update',uid,f,p,changes,before,fields,at};
-  }).filter(x=>x.fields.length||x.at);
+  }).filter(x=>x && (x.fields.length||x.at));
 
-  const addItems=addHistory.map(x=>({type:'add',...x,at:x.addedAt||''}));
+  // Only show add-history entries that still exist in the live database and
+  // are explicitly flagged as REKOD_BARU. This cleans up deleted/stale
+  // localStorage entries such as previously deleted test points.
+  const addItems=addHistory.map(x=>{
+    const f=all.find(row=>String(row.properties?.UID??'')===String(x.uid??''));
+    const p=f?.properties||{};
+    const isNew=!!f && (p.REKOD_BARU===true || String(p.REKOD_BARU).toLowerCase()==='true');
+    return isNew ? ({type:'add',...x,at:x.addedAt||''}) : null;
+  }).filter(Boolean);
+
+  // Clean stale local add history while we are here, so deleted test points
+  // do not come back after refresh.
+  try{
+    const cleaned=addHistory.filter(x=>{
+      const f=all.find(row=>String(row.properties?.UID??'')===String(x.uid??''));
+      const p=f?.properties||{};
+      return !!f && (p.REKOD_BARU===true || String(p.REKOD_BARU).toLowerCase()==='true');
+    });
+    if(cleaned.length!==addHistory.length) saveUPSAddHistoryV91(cleaned);
+  }catch(e){}
   const items=[...updateItems,...addItems].sort((a,b)=>new Date(b.at||0)-new Date(a.at||0));
 
   count.textContent=items.length+' rekod';
